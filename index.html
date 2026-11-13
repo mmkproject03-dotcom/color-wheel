@@ -30,7 +30,11 @@ h2{font:600 30px/1.1 "Cormorant Garamond",serif;margin:0 0 8px}
 .big i{width:88px;height:88px;border-radius:50%;flex:none;border:3px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.18)}
 .big .nm{font:600 40px/1.05 "Cormorant Garamond",serif}
 .big .rg{color:var(--mute);font-size:19px}
-#pairRes{scroll-margin-top:84px}
+#pairRes,#result{scroll-margin-top:84px}
+.step{font-size:20px;margin:16px 0 10px}
+.toast{position:fixed;left:12px;right:12px;bottom:max(14px,env(safe-area-inset-bottom));max-width:536px;margin:0 auto;background:var(--ink);color:var(--bg);border-radius:18px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;font-size:17px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.toast.hidden{display:none}
+.toast button{border:0;border-radius:12px;background:var(--bg);color:var(--ink);font:700 16px Manrope;padding:10px 12px;white-space:nowrap}
 .hint{text-align:center;color:var(--ink);font-size:21px;font-weight:600;margin:4px 0 0}
 .tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .card{background:var(--card);border-radius:18px;padding:18px;margin:12px 0}
@@ -85,19 +89,21 @@ footer{margin-top:28px;color:var(--mute);font-size:15px;text-align:center}
   <!-- ПРОВЕРЬ ОБРАЗ -->
   <section id="check" class="hidden">
     <div class="card">
-      <h2>Цвета вашего образа</h2>
-      <div class="muted">Добавьте 2–4 цвета вещей: из палитры ниже, своим цветом или с фото.</div>
+      <h2>Проверь свой образ</h2>
+      <div class="step"><b>1.</b> Загрузите фото образа</div>
+      <label class="btn" style="display:block;text-align:center">📷 Загрузить фото<input type="file" id="photo" accept="image/*" style="display:none"></label>
+      <div class="step" id="cvhint" style="display:none"><b>2.</b> Нажмите на фото на каждую вещь: верх, низ, обувь, сумку. Хватит 2–4 нажатий</div>
+      <canvas id="cv"></canvas>
+      <div class="step" id="pickedTitle" style="display:none"><b>Вещи в образе:</b></div>
       <div class="picked" id="picked"></div>
       <div class="row">
-        <label class="btn ghost">🎨 Свой цвет <input type="color" id="custom" value="#8e8392" style="width:0;height:0;opacity:0;position:absolute"></label>
-        <label class="btn ghost">📷 С фото <input type="file" id="photo" accept="image/*" style="display:none"></label>
-        <button class="btn ghost" id="clear">Очистить</button>
+        <label class="btn ghost">🎨 Добавить цвет вручную<input type="color" id="custom" value="#8e8392" style="width:0;height:0;opacity:0;position:absolute"></label>
+        <button class="btn ghost" id="clear">Начать заново</button>
       </div>
-      <canvas id="cv"></canvas>
-      <div class="muted" id="cvhint" style="display:none">Нажмите на вещь на фото, чтобы взять её цвет</div>
     </div>
-    <div class="card res" id="result"><div class="muted">Здесь появится разбор образа.</div></div>
-    <div class="card"><div class="muted">Палитра — нажмите, чтобы добавить</div><div id="palette"></div></div>
+    <div class="card res" id="result"></div>
+    <div class="card"><div class="muted">Нет фото? Выберите цвета вещей здесь:</div><div id="palette"></div></div>
+    <div id="toast" class="toast hidden"><span id="toastTxt"></span><button id="toastGo">Смотреть разбор ↓</button></div>
   </section>
 
 
@@ -248,7 +254,9 @@ function renderCheck(){
  box.innerHTML=picked.length?picked.map((p,i)=>`<span class="chip"><i style="background:${p.hex}"></i><span>${p.name}<br><b>кольцо ${p.ring}</b></span><button data-i="${i}">×</button></span>`).join(''):'<span class="muted">Пока пусто</span>';
  box.querySelectorAll('button').forEach(b=>b.onclick=()=>{picked.splice(+b.dataset.i,1);renderCheck()});
  const res=document.getElementById('result');
- if(picked.length<1){res.innerHTML='<div class="muted">Здесь появится разбор образа.</div>';return}
+ document.getElementById('pickedTitle').style.display=picked.length?'block':'none';
+ if(picked.length<1){res.innerHTML='<div class="step" style="margin:0"><b>3.</b> Здесь появится разбор: какое настроение у образа и как его подправить.</div>';return}
+ if(picked.length<2){res.innerHTML=`<div class="step" style="margin:0">Есть 1 вещь — <b>${picked[0].name}</b> (кольцо ${picked[0].ring}).<br>Добавьте ещё хотя бы одну, чтобы увидеть разбор.</div>`;return}
  const rings=[...new Set(picked.map(p=>p.ring))].sort();
  const mn=rings[0],mx=rings[rings.length-1],dist=mx-mn;
  const key=rings.length===1?String(mn):`${mn}-${mx}`;
@@ -260,7 +268,7 @@ function renderCheck(){
  if(rings.length===3){const mid=rings[1];tips.push(`Кольцо ${mid} работает как связка между ${mn} и ${mx} — образ становится цельнее.`)}
  if(dist<=1&&r4===0) tips.push('Кажется плоским? «Перепрыгните» кольцо или добавьте кольцо 4.');
  if(rings.includes(1)&&rings.includes(4)) tips.push('Слишком громко? Замените одну вещь на кольцо 3 — энергия станет мягче.');
- res.innerHTML=`<div class="sub">Кольца ${rings.join(' + ')}</div><h3>${title}</h3><div>${feel}</div>
+ res.innerHTML=`<div class="sub">Разбор образа · кольца ${rings.join(' + ')}</div><h3>${title}</h3><div style="font-size:21px">Ваш образ читается так: <b>${feel}</b></div>
   <div class="meter"><span style="left:${Math.max(4,energy)}%"></span></div><div class="scale"><span>спокойно</span><span>классика</span><span>смело</span></div>
   ${tips.map(t=>`<div class="tip">${t}</div>`).join('')}<div class="tip">${otn}</div>`;
 }
@@ -305,7 +313,12 @@ cv.addEventListener('pointerdown',e=>{const rc=cv.getBoundingClientRect();const 
  const d=ctx.getImageData(x0,y0,Math.min(2*R,cv.width-x0),Math.min(2*R,cv.height-y0)).data;const ch=[[],[],[]];
  for(let i=0;i<d.length;i+=4){ch[0].push(d[i]);ch[1].push(d[i+1]);ch[2].push(d[i+2])}
  const med=a=>{a.sort((p,q)=>p-q);return a[a.length>>1]};
- const hex='#'+ch.map(a=>med(a).toString(16).padStart(2,'0')).join('');const c=classify(hex);addPicked(hex,c.name,c.ring)});
+ const hex='#'+ch.map(a=>med(a).toString(16).padStart(2,'0')).join('');const c=classify(hex);addPicked(hex,c.name,c.ring);
+ // подсказка внизу: что добавилось и куда смотреть
+ const t=document.getElementById('toast');document.getElementById('toastTxt').innerHTML=`<b>${c.name.replace('≈ ','')}</b> · кольцо ${c.ring}<br><small>${picked.length<2?'нажмите ещё на одну вещь':'вещей: '+picked.length}</small>`;
+ document.getElementById('toastGo').style.display=picked.length<2?'none':'inline-block';
+ t.classList.remove('hidden');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.add('hidden'),5000)});
+document.getElementById('toastGo').onclick=()=>{document.getElementById('toast').classList.add('hidden');document.getElementById('result').scrollIntoView({behavior:'smooth',block:'start'})};
 
 /* ---------- старт ---------- */
 drawWheel();ringsInfo();
