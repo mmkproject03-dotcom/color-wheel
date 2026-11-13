@@ -139,9 +139,15 @@ function hex2hsl(h){h=h.replace('#','');const r=parseInt(h.substr(0,2),16)/255,g
  return [H,S,L]}
 function classify(hex){
  for(const r of ORDER) for(const c of RINGS[r].colors) if(c[1].toLowerCase()===hex.toLowerCase()) return {ring:+r,name:c[0]};
+ const [h,s,l]=hex2hsl(hex);
+ // фото: тёплый/холодный свет даёт белому и чёрному лёгкий оттенок — почти бесцветное считаем белым/серым/чёрным
+ const chroma=(()=>{const c=rgb(hex);return (Math.max(...c)-Math.min(...c))/255})();
+ if(l<0.16 || (l<0.24&&chroma<0.08)) return {ring:1,name:"≈ Чёрный"};
+ if(l>0.78 && chroma<0.16) return {ring:2,name:"≈ Белый"};
+ if(l>0.68 && chroma<0.10) return {ring:2,name:"≈ Светло-серый"};
+ if(chroma<0.07) return {ring:2,name:l>0.45?"≈ Серый":"≈ Графит"};
  const nb=nearest(hex);
  if(nb.d<45) return {ring:nb.ring, name:"≈ "+nb.name};
- const [h,s,l]=hex2hsl(hex);
  let ring;
  if(l<0.12) ring=1;
  else if(s<0.10 || l>0.93) ring=2;                                  // белый, серые, графит
@@ -294,8 +300,12 @@ document.getElementById('photo').onchange=e=>{const f=e.target.files[0];if(!f)re
  img.onload=()=>{const k=Math.min(1,900/img.width);cv.width=img.width*k;cv.height=img.height*k;ctx.drawImage(img,0,0,cv.width,cv.height);cv.style.display='block';document.getElementById('cvhint').style.display='block';URL.revokeObjectURL(img.src)};
  img.src=URL.createObjectURL(f)};
 cv.addEventListener('pointerdown',e=>{const rc=cv.getBoundingClientRect();const x=(e.clientX-rc.left)*cv.width/rc.width,y=(e.clientY-rc.top)*cv.height/rc.height;
- const d=ctx.getImageData(Math.max(0,x-4),Math.max(0,y-4),9,9).data;let r=0,g=0,b=0,n=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];n++}
- const hex='#'+[r,g,b].map(v=>Math.round(v/n).toString(16).padStart(2,'0')).join('');const c=classify(hex);addPicked(hex,c.name,c.ring)});
+ // берём участок ~3% ширины фото и медиану по каждому каналу — блики и мелкий узор не сбивают цвет
+ const R=Math.max(6,Math.round(cv.width*0.015));const x0=Math.max(0,Math.round(x-R)),y0=Math.max(0,Math.round(y-R));
+ const d=ctx.getImageData(x0,y0,Math.min(2*R,cv.width-x0),Math.min(2*R,cv.height-y0)).data;const ch=[[],[],[]];
+ for(let i=0;i<d.length;i+=4){ch[0].push(d[i]);ch[1].push(d[i+1]);ch[2].push(d[i+2])}
+ const med=a=>{a.sort((p,q)=>p-q);return a[a.length>>1]};
+ const hex='#'+ch.map(a=>med(a).toString(16).padStart(2,'0')).join('');const c=classify(hex);addPicked(hex,c.name,c.ring)});
 
 /* ---------- старт ---------- */
 drawWheel();ringsInfo();
