@@ -165,41 +165,50 @@ function swatches(onPick, selected){
   <div class="sw">${RINGS[r].colors.map(c=>`<button class="dot ${selected===c[1]?'sel':''}" data-h="${c[1]}" data-n="${c[0]}" data-r="${r}"><i style="background:${c[1]}"></i>${c[0]}</button>`).join('')}</div>`).join('');
 }
 function drawWheel(){
- const svg=document.getElementById('svgwheel');let html='';
+ const svg=document.getElementById('svgwheel');
+ // каждое кольцо — свой слой: вырезанная из картинки «баранка» + зоны нажатия; крутится отдельно
  const radii={1:[0,34],2:[36,72],3:[74,112],4:[114,152]};
- for(const r of ORDER){const [r0,r1]=radii[r];const cols=RINGS[r].colors;const n=cols.length;
-  if(r==="1"){html+=`<circle class="hit" r="34" data-h="${cols[0][1]}" data-n="${cols[0][0]}" data-r="1"/>`;continue}
-  cols.forEach((c,i)=>{const a0=i/n*2*Math.PI-Math.PI/2,a1=(i+1)/n*2*Math.PI-Math.PI/2;
+ const clip={1:[0,33.5],2:[33.5,70.5],3:[70.5,110],4:[110,152]};
+ const ann=(a,b)=>`M${b},0A${b},${b} 0 1 0 ${-b},0A${b},${b} 0 1 0 ${b},0Z`+(a>0?`M${a},0A${a},${a} 0 1 1 ${-a},0A${a},${a} 0 1 1 ${a},0Z`:'');
+ let defs='',layers='';
+ for(const r of ORDER){const [r0,r1]=radii[r];const cols=RINGS[r].colors;const n=cols.length;let html='';
+  if(r==="1"){html=`<circle class="hit" r="34" data-h="${cols[0][1]}" data-n="${cols[0][0]}" data-r="1"/>`}
+  else cols.forEach((c,i)=>{const a0=i/n*2*Math.PI-Math.PI/2,a1=(i+1)/n*2*Math.PI-Math.PI/2;
    const p=(rad,a)=>[rad*Math.cos(a),rad*Math.sin(a)];const [x0,y0]=p(r1,a0),[x1,y1]=p(r1,a1),[x2,y2]=p(r0,a1),[x3,y3]=p(r0,a0);
-   html+=`<path d="M${x0},${y0}A${r1},${r1} 0 0 1 ${x1},${y1}L${x2},${y2}A${r0},${r0} 0 0 0 ${x3},${y3}Z" data-h="${c[1]}" data-n="${c[0]}" data-r="${r}"><title>${c[0]} · кольцо ${r}</title></path>`})}
- // объёмная картинка круга (сегменты совпадают с зонами нажатия)
- svg.innerHTML=`<defs><clipPath id="cc"><circle r="153"/></clipPath><filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-opacity=".25"/></filter></defs>
-  <circle r="152" fill="#EEE7DE" filter="url(#sh)"/>
-  <g id="rot"><image href="wheel-3d.jpg" x="-160" y="-160" width="320" height="320" clip-path="url(#cc)"/>${html}</g>`;
+   html+=`<path d="M${x0},${y0}A${r1},${r1} 0 0 1 ${x1},${y1}L${x2},${y2}A${r0},${r0} 0 0 0 ${x3},${y3}Z" data-h="${c[1]}" data-n="${c[0]}" data-r="${r}"><title>${c[0]} · кольцо ${r}</title></path>`});
+  defs+=`<clipPath id="c${r}"><path clip-rule="evenodd" d="${ann(clip[r][0],clip[r][1])}"/></clipPath>`;
+  layers+=`<g class="ringL" data-ring="${r}"><image href="wheel-3d.jpg" x="-157" y="-158.2" width="320" height="320" clip-path="url(#c${r})"/>${html}</g>`;
+ }
+ svg.innerHTML=`<defs>${defs}<filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-opacity=".25"/></filter></defs>
+  <circle r="152" fill="#EEE7DE" filter="url(#sh)"/>${layers}<g fill="none" stroke="#D8C6A2" stroke-width="2.6" pointer-events="none"><circle r="33.5"/><circle r="70.5"/><circle r="110"/></g>`;
  initSpin(svg);
 }
 /* ---------- вращение круга: сам медленно крутится, пальцем — с инерцией, тап выбирает цвет ---------- */
 function initSpin(svg){
- const g=svg.querySelector('#rot');let ang=0,vel=0,drag=false,last=null,lastT=0,moved=0,startEl=null,idle=true,idleTimer=null;
- const AUTO=0.06; // градусов за кадр — медленное «дыхание» круга
- const angleAt=e=>{const r=svg.getBoundingClientRect();return Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI};
- const apply=()=>g.setAttribute('transform',`rotate(${ang})`);
+ // у каждого кольца свой угол, скорость и направление
+ const R={};svg.querySelectorAll('.ringL').forEach(g=>{const k=+g.dataset.ring;R[k]={g,ang:0,vel:0,auto:{1:0.05,2:0.07,3:-0.05,4:0.035}[k]}});
+ let drag=null,last=null,lastT=0,moved=0,startEl=null,idle=true,idleTimer=null;
+ const center=()=>{const r=svg.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2,r.width/320]};
+ const angleAt=e=>{const [cx,cy]=center();return Math.atan2(e.clientY-cy,e.clientX-cx)*180/Math.PI};
+ const ringAt=e=>{const [cx,cy,k]=center();const d=Math.hypot(e.clientX-cx,e.clientY-cy)/k;return d<35?1:d<73.5?2:d<113.5?3:4};
+ const apply=o=>o.g.setAttribute('transform',`rotate(${o.ang})`);
  function frame(){
-  if(!drag){ if(Math.abs(vel)>0.02){ang+=vel;vel*=0.95} else if(idle){ang+=AUTO} apply() }
+  for(const k in R){const o=R[k];if(drag===o)continue;
+   if(Math.abs(o.vel)>0.02){o.ang+=o.vel;o.vel*=0.95} else if(idle){o.ang+=o.auto} apply(o)}
   requestAnimationFrame(frame)}
- svg.addEventListener('pointerdown',e=>{drag=true;idle=false;clearTimeout(idleTimer);vel=0;last=angleAt(e);lastT=performance.now();moved=0;
+ svg.addEventListener('pointerdown',e=>{drag=R[ringAt(e)];idle=false;clearTimeout(idleTimer);drag.vel=0;last=angleAt(e);lastT=performance.now();moved=0;
   startEl=e.target.closest('[data-h]');svg.setPointerCapture(e.pointerId)});
  svg.addEventListener('pointermove',e=>{if(!drag)return;const a=angleAt(e);let d=a-last;if(d>180)d-=360;if(d<-180)d+=360;
-  ang+=d;moved+=Math.abs(d);const t=performance.now();vel=d/Math.max(1,(t-lastT)/16.7);last=a;lastT=t;apply()});
- const end=e=>{if(!drag)return;drag=false;
-  if(moved<4&&startEl){vel=0;pick(startEl)}            // короткое нажатие = выбор цвета
-  else{idleTimer=setTimeout(()=>{if(!pairColor)idle=true},4000)}};
+  drag.ang+=d;moved+=Math.abs(d);const t=performance.now();drag.vel=d/Math.max(1,(t-lastT)/16.7);last=a;lastT=t;apply(drag)});
+ const end=e=>{if(!drag)return;const o=drag;drag=null;
+  if(moved<4&&startEl){o.vel=0;pick(startEl)}            // короткое нажатие = выбор цвета
+  else{idleTimer=setTimeout(()=>{if(!pairColor)idle=true},6000)}};
  svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
  function pick(el){svg.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
   pairColor={hex:el.dataset.h,name:el.dataset.n,ring:+el.dataset.r};renderPair();
   document.getElementById('pairRes').scrollIntoView({behavior:'smooth',block:'start'})}
- // приветственный оборот при открытии
- vel=6;requestAnimationFrame(frame);
+ // приветственный оборот: кольца раскручиваются в разные стороны
+ R[2].vel=5;R[3].vel=-6;R[4].vel=4;requestAnimationFrame(frame);
 }
 function ringsInfo(){
  document.getElementById('rings').innerHTML=ORDER.map(r=>`<div style="margin-top:14px"><div class="ring"><span class="num">${r}</span><span class="rname">${RINGS[r].name}</span></div>
